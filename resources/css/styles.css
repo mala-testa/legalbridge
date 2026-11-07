@@ -1,0 +1,291 @@
+/* --------------------------------------------------
+   GLOBAL BASE
+-------------------------------------------------- */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f5f6f7;
+  color: #333;
+}
+
+.center {
+  text-align: center;
+}
+
+.lb-content {
+  padding: 20px;
+  font-size: 1.2rem;
+  text-align: center;
+}
+
+/* --------------------------------------------------
+   HEADER
+-------------------------------------------------- */
+
+.lb-header {
+  background: #333;
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-img {
+  width: 160px;
+  height: auto;
+}
+
+.logo-text {
+  font-size: 46px;
+  font-weight: bold;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+.username {
+  font-size: 14px;
+  color: #ddd;
+}
+
+/* --------------------------------------------------
+   NAVIGATION
+-------------------------------------------------- */
+
+.lb-nav {
+  background: #444;
+  padding: 12px 20px;
+  display: flex;
+  gap: 20px;
+}
+
+.lb-nav a {
+  color: white;
+  text-decoration: none;
+  font-weight: bold;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.lb-nav a:hover {
+  background: #555;
+}
+
+/* --------------------------------------------------
+   TITLES
+-------------------------------------------------- */
+
+.lb-title {
+  font-size: 1.2rem;
+  color: green;
+  line-height: 1.5;
+  margin-top: 90px;
+  margin-bottom: 20px;
+  font-weight: 700;
+}
+
+/* --------------------------------------------------
+   FORM CONTAINERS
+-------------------------------------------------- */
+
+.lb-form-container {
+  max-width: 420px;
+  margin: 40px auto;
+  padding: 26px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+}
+
+.lb-form label {
+  display: block;
+  margin-top: 15px;
+  font-weight: bold;
+}
+
+.lb-form input,
+.lb-form select,
+.lb-form textarea {
+  width: 100%;
+  padding: 12px;
+  margin-top: 6px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 1rem;
+  background: #fafafa;
+}
+
+/* --------------------------------------------------
+   BUTTONS
+-------------------------------------------------- */
+
+.lb-btn {
+  display: inline-block;
+  padding: 12px 18px;
+  background: #333;
+  color: #fff;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+  width: auto;
+}
+
+.lb-btn:hover {
+  background: #555;
+}
+
+.lb-danger {
+  background: #b00000 !important;
+}
+
+.lb-danger:hover {
+  background: #d00000 !important;
+}
+
+.action-btn {
+  padding: 8px 14px;
+  background: #333;
+  color: #fff;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 14px;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.action-btn:hover {
+  background: #555;
+}
+
+.action-btn.danger {
+  background: #b00000;
+}
+
+.action-btn.danger:hover {
+  background: #d00000;
+}
+
+/* --------------------------------------------------
+   CARDS
+-------------------------------------------------- */
+
+.lb-card {
+  background: #fff;
+  padding: 22px;
+  margin: 20px auto;
+  border-radius: 12px;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+  max-width: 900px;
+}
+
+/* --------------------------------------------------
+   TABLES
+-------------------------------------------------- */
+
+.specialties-table-wrapper {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.specialties-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+}
+
+.specialties-table th,
+.specialties-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #ddd;
+}
+
+.specialties-table th {
+  background: #333;
+  color: #fff;
+  font-weight: bold;
+}
+
+.actions-cell {
+  display: flex;
+  gap: 10px;
+}
+
+/* --------------------------------------------------
+   ADMIN GRID
+-------------------------------------------------- */
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 24px;
+  padding: 20px;
+}
+
+.admin-tile {
+  background: #fff;
+  padding: 26px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-tile:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+}
+
+.tile-icon {
+  font-size: 42px;
+  margin-bottom: 12px;
+}
+
+.tile-title {
+  font-size: 20px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.tile-desc {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 12px;
+}
+
+/* --------------------------------------------------
+   ALERTS
+-------------------------------------------------- */
+
+.lb-error {
+  background: #ffe5e5;
+  color: #b00000;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.lb-success {
+  background: #e6ffe6;
+  color: #006600;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
