@@ -1,97 +1,395 @@
 <?php
-require_once __DIR__ . '/includes/header.php';
+
+require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/auth.php';
+
+lb_secure_session_start();
+
+$error   = '';
+$success = '';
+
+/*
+|--------------------------------------------------------------------------
+| Require authenticated user
+|--------------------------------------------------------------------------
+*/
 
 if (!isset($_SESSION['user_id'])) {
-    echo "<div class='lb-error'><h3>You must be logged in.</h3></div>";
-    echo "</main></body></html>";
+    header('Location: login.php');
     exit;
 }
 
-// Require fingerprint for this sensitive flow
+$user_id = (int)$_SESSION['user_id'];
+
+/*
+|--------------------------------------------------------------------------
+| Verify session fingerprint
+|--------------------------------------------------------------------------
+*/
+
 if (!verify_session_fingerprint(true)) {
     lb_destroy_session();
+
     http_response_code(403);
+
     exit('Session integrity check failed. Please log in again.');
 }
 
-$error = '';
-$success = '';
+/*
+|--------------------------------------------------------------------------
+| Verify temporary password-change authorization
+|--------------------------------------------------------------------------
+|
+| request_reset.php should set:
+|
+| $_SESSION['password_change_verified']
+| $_SESSION['password_change_verified_at']
+|
+| The authorization is valid for 10 minutes.
+|
+*/
+
+$verified_user_id =
+    (int)($_SESSION['password_change_verified'] ?? 0);
+
+$verified_at =
+    (int)($_SESSION['password_change_verified_at'] ?? 0);
+
+$authorization_expired =
+    $verified_at <= 0 ||
+    (time() - $verified_at) > 600;
+
+if (
+    $verified_user_id !== $user_id ||
+    $authorization_expired
+) {
+    unset(
+        $_SESSION['password_change_verified'],
+        $_SESSION['password_change_verified_at']
+    );
+
+    header('Location: profile.php?reset_expired=1');
+    exit;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Process password change
+|--------------------------------------------------------------------------
+*/
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $current_password =
+        $_POST['current_password'] ?? '';
 
-    $current = $_POST['current_password'] ?? '';
-    $newpass = $_POST['new_password'] ?? '';
+    $new_password =
+        $_POST['new_password'] ?? '';
 
-    if ($current === '' || $newpass === '') {
+    $confirm_password =
+        $_POST['confirm_password'] ?? '';
 
-        $error = "Current password and new password are required.";
+    /*
+    |--------------------------------------------------------------------------
+    | CSRF validation
+    |--------------------------------------------------------------------------
+    */
 
-    } else {
+    if (!csrfValidate($_POST['csrf'] ?? '')) {
+        $error =
+            'Invalid request. Please refresh the page and try again.';
+    }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Required field validation
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+        $error === '' &&
+        (
+            $current_password === '' ||
+            $new_password === '' ||
+            $confirm_password === ''
+        )
+    ) {
+        $error =
+            'Current password, new password, and password confirmation are required.';
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Password length validation
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+        $error === '' &&
+        strlen($current_password) > 128
+    ) {
+        $error = 'Invalid current password.';
+    }
+
+    if (
+        $error === '' &&
+        strlen($new_password) > 128
+    ) {
+        $error =
+            'New password cannot exceed 128 characters.';
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | New password strength validation
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+        $error === '' &&
+        (
+            strlen($new_password) < 8 ||
+            !preg_match('/[A-Z]/', $new_password) ||
+            !preg_match('/[a-z]/', $new_password) ||
+            !preg_match('/[0-9]/', $new_password)
+        )
+    ) {
+        $error =
+            'New password must contain at least 8 characters, one uppercase letter, one lowercase letter, and one number.';
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Password confirmation
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+        $error === '' &&
+        !hash_equals(
+            $new_password,
+            $confirm_password
+        )
+    ) {
+        $error =
+            'New password and confirmation do not match.';
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Load authenticated account
+    |--------------------------------------------------------------------------
+    */
+
+    if ($error === '') {
         $stmt = dbSelect(
             "SELECT id, password_hash
              FROM users
              WHERE id = :id
+               AND active = 1
              LIMIT 1",
-            [':id' => $_SESSION['user_id']]
+            [
+                ':id' => $user_id
+            ]
         );
 
         $user = $stmt->fetch();
 
-        if (!$user || !password_verify($current, $user['password_hash'])) {
+        if (!$user) {
+            lb_log_error(
+                'Password change failed: active user not found for ID '
+                    . $user_id
+            );
 
-            $error = "Invalid current password.";
+            $error =
+                'Your account could not be verified.';
+        }
+    }
 
-        } elseif (password_verify($newpass, $user['password_hash'])) {
+    /*
+    |--------------------------------------------------------------------------
+    | Verify current password again
+    |--------------------------------------------------------------------------
+    */
 
-            $error = "New password must be different from your current password.";
+    if (
+        $error === '' &&
+        !password_verify(
+            $current_password,
+            $user['password_hash']
+        )
+    ) {
+        $error = 'The current password is incorrect.';
+    }
 
-        } else {
+    /*
+    |--------------------------------------------------------------------------
+    | Ensure new password is different
+    |--------------------------------------------------------------------------
+    */
 
-            dbExecute(
+    if (
+        $error === '' &&
+        password_verify(
+            $new_password,
+            $user['password_hash']
+        )
+    ) {
+        $error =
+            'New password must be different from your current password.';
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Update password
+    |--------------------------------------------------------------------------
+    */
+
+    if ($error === '') {
+        try {
+            $new_password_hash =
+                password_hash(
+                    $new_password,
+                    PASSWORD_DEFAULT
+                );
+
+            if ($new_password_hash === false) {
+                throw new RuntimeException(
+                    'Password hashing failed.'
+                );
+            }
+
+            $updated = dbExecute(
                 "UPDATE users
-                 SET password_hash = :hash
-                 WHERE id = :id",
+                 SET password_hash = :password_hash
+                 WHERE id = :id
+                   AND active = 1",
                 [
-                    ':hash' => password_hash($newpass, PASSWORD_DEFAULT),
-                    ':id'   => $user['id']
+                    ':password_hash' => $new_password_hash,
+                    ':id'            => $user_id
                 ]
             );
 
-            // Remove temporary password change authorization
-            unset($_SESSION['password_change_verified']);
-            unset($_SESSION['password_change_expires']);
+            if (!$updated) {
+                throw new RuntimeException(
+                    'Password update query failed.'
+                );
+            }
 
-            // Rotate session
+            /*
+            |--------------------------------------------------------------------------
+            | Remove temporary authorization
+            |--------------------------------------------------------------------------
+            |
+            | This makes the password-change authorization single-use.
+            |
+            */
+
+            unset(
+                $_SESSION['password_change_verified'],
+                $_SESSION['password_change_verified_at']
+            );
+
+            /*
+            |--------------------------------------------------------------------------
+            | Regenerate the session
+            |--------------------------------------------------------------------------
+            */
+
             lb_regenerate_session();
 
             $_SESSION['fingerprint'] = hash(
                 'sha256',
                 ($_SERVER['REMOTE_ADDR'] ?? '') .
-                ($_SERVER['HTTP_USER_AGENT'] ?? '') .
-                session_id()
+                    ($_SERVER['HTTP_USER_AGENT'] ?? '') .
+                    session_id()
             );
 
             $_SESSION['created'] = time();
 
-            $success = "Password updated successfully.";
+            /*
+            |--------------------------------------------------------------------------
+            | Rotate CSRF token
+            |--------------------------------------------------------------------------
+            */
+
+            $_SESSION['csrf'] =
+                bin2hex(random_bytes(32));
+
+            /*
+            |--------------------------------------------------------------------------
+            | Clear password variables
+            |--------------------------------------------------------------------------
+            */
+
+            $current_password = '';
+            $new_password     = '';
+            $confirm_password = '';
+
+            $success =
+                'Password updated successfully.';
+        } catch (Throwable $exception) {
+            lb_log_error(
+                'Password update failed for user ID '
+                    . $user_id
+                    . ': '
+                    . $exception->getMessage()
+            );
+
+            $error =
+                'Your password could not be updated. Please try again.';
         }
     }
 }
 
+/*
+|--------------------------------------------------------------------------
+| Load HTML header after redirects and POST processing
+|--------------------------------------------------------------------------
+*/
+
+require_once __DIR__ . '/includes/header.php';
+
 ?>
-<h2 class="lb-title center">Reset Password</h2>
+
+<h2 class="lb-title center">
+    Reset Password
+</h2>
 
 <div class="lb-form-container">
-    <?php if ($error): ?>
-        <div class="lb-error"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
+
+    <?php if ($error !== ''): ?>
+
+        <div class="lb-error">
+            <?= e($error) ?>
+        </div>
+
     <?php endif; ?>
 
-    <?php if ($success): ?>
-        <div class="lb-success"><?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?></div>
-        <p><a class="lb-btn" href="dashboard.php">Return to dashboard</a></p>
+    <?php if ($success !== ''): ?>
+
+        <div class="lb-success">
+            <?= e($success) ?>
+        </div>
+
+        <p>
+            <a
+                class="lb-btn"
+                href="dashboard.php">
+                Return to Dashboard
+            </a>
+        </p>
+
     <?php else: ?>
-        <form method="post" action="reset_password.php" class="lb-form">
+
+        <form
+            method="post"
+            action="reset_password.php"
+            class="lb-form">
+
+            <input
+                type="hidden"
+                name="csrf"
+                value="<?= e(csrfToken()) ?>">
 
             <label for="current_password">
                 Current Password
@@ -101,7 +399,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 type="password"
                 id="current_password"
                 name="current_password"
-                maxlength="64"
+                maxlength="128"
+                autocomplete="current-password"
                 required>
 
             <label for="new_password">
@@ -112,15 +411,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 type="password"
                 id="new_password"
                 name="new_password"
-                maxlength="64"
+                minlength="8"
+                maxlength="128"
+                autocomplete="new-password"
+                aria-describedby="password_requirements"
                 required>
 
-            <button type="submit" class="lb-btn">
+            <small id="password_requirements">
+                Use at least 8 characters, including one uppercase letter,
+                one lowercase letter, and one number.
+            </small>
+
+            <label for="confirm_password">
+                Confirm New Password
+            </label>
+
+            <input
+                type="password"
+                id="confirm_password"
+                name="confirm_password"
+                minlength="8"
+                maxlength="128"
+                autocomplete="new-password"
+                required>
+
+            <button
+                type="submit"
+                class="lb-btn">
                 Change Password
             </button>
 
         </form>
+
+        <p style="margin-top: 1rem;">
+            <a
+                class="lb-btn lb-btn-secondary"
+                href="profile.php">
+                Cancel
+            </a>
+        </p>
+
     <?php endif; ?>
+
 </div>
 
 </main>

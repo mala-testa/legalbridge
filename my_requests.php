@@ -1,55 +1,142 @@
 <?php
-require_once 'includes/header.php';
 
+require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/auth.php';
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'client') {
-    echo "<div class='lb-error'><h3>Access denied.</h3></div>";
-    echo "</main></body></html>";
+lb_secure_session_start();
+
+/*
+|--------------------------------------------------------------------------
+| Require authenticated client
+|--------------------------------------------------------------------------
+*/
+
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
     exit;
 }
 
+/*
+|--------------------------------------------------------------------------
+| Verify session integrity before any HTML output
+|--------------------------------------------------------------------------
+*/
+
 if (!verify_session_fingerprint(true)) {
-    // optional: log the event
     lb_destroy_session();
+
     http_response_code(403);
+
     exit('Session integrity check failed. Please log in again.');
 }
 
-$user_id = (int) $_SESSION['user_id'];
+/*
+|--------------------------------------------------------------------------
+| Require client role
+|--------------------------------------------------------------------------
+*/
+
+if (($_SESSION['role'] ?? '') !== 'client') {
+    http_response_code(403);
+
+    require_once __DIR__ . '/includes/header.php';
+
+    echo "
+        <div class='lb-error'>
+            <h3>Access denied.</h3>
+        </div>
+    ";
+
+    echo '</main></body></html>';
+    exit;
+}
+
+$user_id = (int)$_SESSION['user_id'];
+
+/*
+|--------------------------------------------------------------------------
+| Load requests belonging to the authenticated client
+|--------------------------------------------------------------------------
+*/
+
+$requests = dbSelect(
+    "SELECT
+        r.id,
+        r.case_description,
+        s.name AS specialty_name
+     FROM client_requests r
+     LEFT JOIN specialties s
+       ON r.specialty_id = s.id
+     WHERE r.user_id = :user_id
+     ORDER BY r.id DESC",
+    [
+        ':user_id' => $user_id
+    ]
+)->fetchAll();
+
+/*
+|--------------------------------------------------------------------------
+| Load HTML after authentication and database processing
+|--------------------------------------------------------------------------
+*/
+
+require_once __DIR__ . '/includes/header.php';
 
 ?>
-<h2 class="lb-title center">My Requests</h2>
+
+<h2 class="lb-title center">
+    My Requests
+</h2>
 
 <div class="lb-section">
 
-<?php
-$requests = dbSelect(
-    "SELECT r.id, r.case_description, s.name AS specialty_name
-     FROM client_requests r
-     LEFT JOIN specialties s ON r.specialty_id = s.id
-     WHERE r.user_id = :uid
-     ORDER BY r.id DESC",
-    [':uid' => $user_id]
-);
+    <?php if (empty($requests)): ?>
 
-while ($r = $requests->fetch()) {
-
-    $rid   = (int) $r['id'];
-    $spec  = e($r['specialty_name'] ?: 'Unknown');
-    $desc  = e($r['case_description']);
-
-    echo "
-        <div class='lb-card'>
-            <h3>Request #{$rid}</h3>
-            <p><strong>Specialty:</strong> {$spec}</p>
-            <p><strong>Description:</strong> {$desc}</p>
+        <div class="lb-card">
+            <p>You have not submitted any legal requests.</p>
         </div>
-    ";
-}
-?>
+
+    <?php else: ?>
+
+        <?php foreach ($requests as $request): ?>
+
+            <?php
+            $request_id = (int)$request['id'];
+
+            $specialty_name =
+                $request['specialty_name']
+                ?? 'Unknown';
+
+            $case_description =
+                $request['case_description']
+                ?? '';
+            ?>
+
+            <div class="lb-card">
+
+                <h3>
+                    Request #<?= $request_id ?>
+                </h3>
+
+                <p>
+                    <strong>Specialty:</strong>
+                    <?= e($specialty_name) ?>
+                </p>
+
+                <p>
+                    <strong>Description:</strong>
+                    <?= nl2br(e($case_description)) ?>
+                </p>
+
+            </div>
+
+        <?php endforeach; ?>
+
+    <?php endif; ?>
 
 </div>
 
 </main>
 </body>
+
 </html>
