@@ -51,7 +51,7 @@ $clients = $stmt->fetchAll();
                                 value="<?= (int)$c['id'] ?>">
 
                             <input type="hidden"
-                                name="csrf_token"
+                                name="csrf"
                                 value="<?= e(csrfToken()) ?>">
 
                             <button type="submit"
